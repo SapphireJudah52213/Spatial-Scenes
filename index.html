@@ -2,75 +2,93 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Spatial Scene AR</title>
+<title>Spatial Scene AR (Safari Friendly)</title>
 <style>
 body{margin:0;overflow:hidden;font-family:sans-serif;}
-#enter-ar {
+#ui {
   position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
-  padding:12px 20px;border:0;border-radius:10px;
-  font-size:18px;background:black;color:white;
+  background:black;color:white;padding:10px 18px;border-radius:10px;
+  font-size:16px;
 }
 </style>
 </head>
 <body>
-<button id="enter-ar">Start AR</button>
+<div id="ui">Start AR</div>
 
+<script src="https://cdn.jsdelivr.net/npm/webxr-polyfill@latest/build/webxr-polyfill.min.js"></script>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.162/build/three.module.js';
 import {ARButton} from 'https://cdn.jsdelivr.net/npm/three@0.162/examples/jsm/webxr/ARButton.js';
 
-let renderer, scene, camera, cube, hitTestSource=null, viewerSpace=null;
+let renderer, scene, camera, cube, hitTestSource=null, sessionStarted=false;
 
-scene = new THREE.Scene();
-camera = new THREE.PerspectiveCamera();
+scene=new THREE.Scene();
+camera=new THREE.PerspectiveCamera();
 
-renderer = new THREE.WebGLRenderer({alpha:true,antialias:true});
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.xr.enabled = true;
+renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.xr.enabled=true;
 document.body.appendChild(renderer.domElement);
 
-const light = new THREE.HemisphereLight(0xffffff,0x444444,1.2);
-scene.add(light);
+scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
 
-// “liquid glass cube”
-cube = new THREE.Mesh(
+cube=new THREE.Mesh(
   new THREE.BoxGeometry(0.15,0.15,0.15),
   new THREE.MeshPhysicalMaterial({
     roughness:0.05,
     transmission:0.95,
-    opacity:1,
     transparent:true,
     thickness:0.3,
     ior:1.4
   })
 );
-cube.visible = false;
+cube.visible=false;
 scene.add(cube);
 
-document.getElementById('enter-ar')
-  .onclick=()=>document.body.appendChild(ARButton.createButton(renderer,{requiredFeatures:['hit-test']}));
+const ui=document.getElementById('ui');
+ui.onclick=async()=>{
+  if(sessionStarted) return;
+  try {
+    document.body.appendChild(
+      ARButton.createButton(renderer,{requiredFeatures:['hit-test']})
+    );
+    sessionStarted=true;
+    ui.style.display='none';
+  } catch(e) {
+    ui.textContent='Tap screen to place';
+    fallbackStart();
+  }
+};
+
+// fallback for Safari without AR camera access
+function fallbackStart(){
+  ui.style.background='rgba(0,0,0,0.4)';
+  const planeZ=-0.5;
+  window.addEventListener('click',e=>{
+    cube.visible=true;
+    cube.position.set(0,0,planeZ);
+  });
+}
 
 renderer.setAnimationLoop((time,frame)=>{
   if(frame){
-    const refSpace = renderer.xr.getReferenceSpace();
-    const session = renderer.xr.getSession();
-
-    if(!hitTestSource){
+    const session=renderer.xr.getSession();
+    if(session && !hitTestSource){
       session.requestReferenceSpace('viewer')
-      .then(space=>{
-        viewerSpace=space;
-        return session.requestHitTestSource({space});
-      }).then(src=>hitTestSource=src);
+      .then(vs=>session.requestHitTestSource({space:vs}))
+      .then(src=>hitTestSource=src);
     }
-
-    const hitTestResults = hitTestSource ? frame.getHitTestResults(hitTestSource) : [];
-    if(hitTestResults.length>0){
-      const hit = hitTestResults[0].getPose(refSpace);
-      cube.visible=true;
-      cube.position.set(hit.transform.position.x,hit.transform.position.y,hit.transform.position.z);
-      cube.rotation.y += 0.01;
+    if(hitTestSource){
+      const refSpace=renderer.xr.getReferenceSpace();
+      const hits=frame.getHitTestResults(hitTestSource);
+      if(hits.length>0){
+        const pose=hits[0].getPose(refSpace);
+        cube.visible=true;
+        cube.position.copy(pose.transform.position);
+      }
     }
   }
+  cube.rotation.y+=0.01;
   renderer.render(scene,camera);
 });
 </script>
