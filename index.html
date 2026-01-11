@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spatial Scene AR</title>
+<style>
+body{margin:0;overflow:hidden;font-family:sans-serif;}
+#enter-ar {
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  padding:12px 20px;border:0;border-radius:10px;
+  font-size:18px;background:black;color:white;
+}
+</style>
+</head>
+<body>
+<button id="enter-ar">Start AR</button>
+
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.162/build/three.module.js';
+import {ARButton} from 'https://cdn.jsdelivr.net/npm/three@0.162/examples/jsm/webxr/ARButton.js';
+
+let renderer, scene, camera, cube, hitTestSource=null, viewerSpace=null;
+
+scene = new THREE.Scene();
+camera = new THREE.PerspectiveCamera();
+
+renderer = new THREE.WebGLRenderer({alpha:true,antialias:true});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const light = new THREE.HemisphereLight(0xffffff,0x444444,1.2);
+scene.add(light);
+
+// “liquid glass cube”
+cube = new THREE.Mesh(
+  new THREE.BoxGeometry(0.15,0.15,0.15),
+  new THREE.MeshPhysicalMaterial({
+    roughness:0.05,
+    transmission:0.95,
+    opacity:1,
+    transparent:true,
+    thickness:0.3,
+    ior:1.4
+  })
+);
+cube.visible = false;
+scene.add(cube);
+
+document.getElementById('enter-ar')
+  .onclick=()=>document.body.appendChild(ARButton.createButton(renderer,{requiredFeatures:['hit-test']}));
+
+renderer.setAnimationLoop((time,frame)=>{
+  if(frame){
+    const refSpace = renderer.xr.getReferenceSpace();
+    const session = renderer.xr.getSession();
+
+    if(!hitTestSource){
+      session.requestReferenceSpace('viewer')
+      .then(space=>{
+        viewerSpace=space;
+        return session.requestHitTestSource({space});
+      }).then(src=>hitTestSource=src);
+    }
+
+    const hitTestResults = hitTestSource ? frame.getHitTestResults(hitTestSource) : [];
+    if(hitTestResults.length>0){
+      const hit = hitTestResults[0].getPose(refSpace);
+      cube.visible=true;
+      cube.position.set(hit.transform.position.x,hit.transform.position.y,hit.transform.position.z);
+      cube.rotation.y += 0.01;
+    }
+  }
+  renderer.render(scene,camera);
+});
+</script>
+</body>
+</html>
