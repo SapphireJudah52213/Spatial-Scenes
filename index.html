@@ -2,33 +2,50 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Safari Spatial Illusion</title>
+<title>AR Image Plane</title>
 <style>
-body,html{margin:0;padding:0;overflow:hidden;background:black;}
+html,body{margin:0;height:100%;overflow:hidden;background:black;}
 video,canvas{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
-#tap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
-background:black;color:white;padding:10px 18px;border-radius:10px;}
+#pick,#start{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:black;color:white;
+  padding:10px 18px;border-radius:10px;font-size:16px;}
+#pick{bottom:70px;}
 </style>
 </head>
 <body>
-<div id="tap">Tap to Start</div>
+<input id="pick" type="file" accept="image/*">
+<div id="start">Start AR</div>
 <video id="cam" playsinline></video>
 <canvas id="c"></canvas>
 
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.162/build/three.module.js';
 
+const pick=document.getElementById('pick');
+const start=document.getElementById('start');
 const video=document.getElementById('cam');
 const canvas=document.getElementById('c');
-const tap=document.getElementById('tap');
-const ctx2d=canvas.getContext('2d');
+const ctx=canvas.getContext('2d');
 
-let scene,camera,renderer,cube;
+let renderer,scene,camera,textureMesh,userTexture=null;
 
-// camera start
-async function start(){
-  tap.style.display='none';
-  video.srcObject = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+pick.onchange=e=>{
+  const file=e.target.files[0];
+  const img=new Image();
+  img.onload=()=>{
+    const tex=new THREE.Texture(img);
+    tex.needsUpdate=true;
+    userTexture=tex;
+    if(textureMesh){
+      textureMesh.material.map=tex;
+      textureMesh.material.needsUpdate=true;
+    }
+  };
+  img.src=URL.createObjectURL(file);
+};
+
+async function startAR(){
+  start.style.display='none';
+  video.srcObject=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
   await video.play();
 
   scene=new THREE.Scene();
@@ -38,28 +55,37 @@ async function start(){
 
   scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
 
-  cube=new THREE.Mesh(
-    new THREE.BoxGeometry(0.1,0.1,0.1),
-    new THREE.MeshStandardMaterial({color:0xffffff,transparent:true,opacity:0.7})
-  );
-  cube.position.z=-0.5;
-  scene.add(cube);
+  const geo=new THREE.PlaneGeometry(0.4,0.3);
+  const mat=new THREE.MeshBasicMaterial({map:userTexture,transparent:true});
+  textureMesh=new THREE.Mesh(geo,mat);
+  textureMesh.position.z=-0.6;
+  textureMesh.visible=false;
+  scene.add(textureMesh);
+
+  window.addEventListener('click',()=>{
+    if(userTexture){
+      textureMesh.visible=true;
+      textureMesh.rotation.y=0;
+    }
+  });
 
   requestAnimationFrame(loop);
 }
 
 function loop(){
-  // draw camera behind
   canvas.width=innerWidth;
   canvas.height=innerHeight;
-  ctx2d.drawImage(video,0,0,canvas.width,canvas.height);
+  ctx.drawImage(video,0,0,canvas.width,canvas.height);
 
-  cube.rotation.y+=0.01;
+  if(textureMesh && textureMesh.visible){
+    textureMesh.rotation.y+=0.01;
+  }
+
   renderer.render(scene,camera);
   requestAnimationFrame(loop);
 }
 
-tap.onclick=start;
+start.onclick=startAR;
 </script>
 </body>
 </html>
