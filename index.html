@@ -2,95 +2,64 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Spatial Scene AR (Safari Friendly)</title>
+<title>Safari Spatial Illusion</title>
 <style>
-body{margin:0;overflow:hidden;font-family:sans-serif;}
-#ui {
-  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
-  background:black;color:white;padding:10px 18px;border-radius:10px;
-  font-size:16px;
-}
+body,html{margin:0;padding:0;overflow:hidden;background:black;}
+video,canvas{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;}
+#tap{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+background:black;color:white;padding:10px 18px;border-radius:10px;}
 </style>
 </head>
 <body>
-<div id="ui">Start AR</div>
+<div id="tap">Tap to Start</div>
+<video id="cam" playsinline></video>
+<canvas id="c"></canvas>
 
-<script src="https://cdn.jsdelivr.net/npm/webxr-polyfill@latest/build/webxr-polyfill.min.js"></script>
 <script type="module">
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.162/build/three.module.js';
-import {ARButton} from 'https://cdn.jsdelivr.net/npm/three@0.162/examples/jsm/webxr/ARButton.js';
 
-let renderer, scene, camera, cube, hitTestSource=null, sessionStarted=false;
+const video=document.getElementById('cam');
+const canvas=document.getElementById('c');
+const tap=document.getElementById('tap');
+const ctx2d=canvas.getContext('2d');
 
-scene=new THREE.Scene();
-camera=new THREE.PerspectiveCamera();
+let scene,camera,renderer,cube;
 
-renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});
-renderer.setSize(window.innerWidth,window.innerHeight);
-renderer.xr.enabled=true;
-document.body.appendChild(renderer.domElement);
+// camera start
+async function start(){
+  tap.style.display='none';
+  video.srcObject = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+  await video.play();
 
-scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1.2));
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(70,innerWidth/innerHeight,0.01,10);
+  renderer=new THREE.WebGLRenderer({canvas,alpha:true});
+  renderer.setSize(innerWidth,innerHeight);
 
-cube=new THREE.Mesh(
-  new THREE.BoxGeometry(0.15,0.15,0.15),
-  new THREE.MeshPhysicalMaterial({
-    roughness:0.05,
-    transmission:0.95,
-    transparent:true,
-    thickness:0.3,
-    ior:1.4
-  })
-);
-cube.visible=false;
-scene.add(cube);
+  scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
 
-const ui=document.getElementById('ui');
-ui.onclick=async()=>{
-  if(sessionStarted) return;
-  try {
-    document.body.appendChild(
-      ARButton.createButton(renderer,{requiredFeatures:['hit-test']})
-    );
-    sessionStarted=true;
-    ui.style.display='none';
-  } catch(e) {
-    ui.textContent='Tap screen to place';
-    fallbackStart();
-  }
-};
+  cube=new THREE.Mesh(
+    new THREE.BoxGeometry(0.1,0.1,0.1),
+    new THREE.MeshStandardMaterial({color:0xffffff,transparent:true,opacity:0.7})
+  );
+  cube.position.z=-0.5;
+  scene.add(cube);
 
-// fallback for Safari without AR camera access
-function fallbackStart(){
-  ui.style.background='rgba(0,0,0,0.4)';
-  const planeZ=-0.5;
-  window.addEventListener('click',e=>{
-    cube.visible=true;
-    cube.position.set(0,0,planeZ);
-  });
+  requestAnimationFrame(loop);
 }
 
-renderer.setAnimationLoop((time,frame)=>{
-  if(frame){
-    const session=renderer.xr.getSession();
-    if(session && !hitTestSource){
-      session.requestReferenceSpace('viewer')
-      .then(vs=>session.requestHitTestSource({space:vs}))
-      .then(src=>hitTestSource=src);
-    }
-    if(hitTestSource){
-      const refSpace=renderer.xr.getReferenceSpace();
-      const hits=frame.getHitTestResults(hitTestSource);
-      if(hits.length>0){
-        const pose=hits[0].getPose(refSpace);
-        cube.visible=true;
-        cube.position.copy(pose.transform.position);
-      }
-    }
-  }
+function loop(){
+  // draw camera behind
+  canvas.width=innerWidth;
+  canvas.height=innerHeight;
+  ctx2d.drawImage(video,0,0,canvas.width,canvas.height);
+
   cube.rotation.y+=0.01;
   renderer.render(scene,camera);
-});
+  requestAnimationFrame(loop);
+}
+
+tap.onclick=start;
 </script>
 </body>
 </html>
